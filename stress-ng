@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+
+# munin plugin that uses stress-ng to measure cpu, memory and disk throughput
+# configure the plugin with `user root`
+
+# Spawned as a subshell to create & parse stress-ng measurements
+# If the plugin is not run for 6 minutes, this process will terminate
+# It does this by monitoring the access (read) time of the log file
+# The plugin deletes the file when munin-node runs and takes the measurements
+logprefix="/tmp/munin-stress-ng"
+measurement_process() {
+  age="0"
+  while [ $age -lt "360" ]
+  do
+    stress-ng --cpu 0 --memrate 0 --iomix 0 -t 1s --sequential 0 --metrics --quiet --yaml "$logprefix.yml"
+    eval $(parse_yaml "$logprefix.yml" "STRESS_")
+    rm "$logprefix.yml"
+
+    cpu=$STRESS_metrics_cpu_bogo_ops_per_second_real_time
+    memrate=$STRESS_metrics_memrate_bogo_ops_per_second_real_time
+    iomix=$STRESS_metrics_iomix_bogo_ops_per_second_real_time
+    echo "$cpu $memrate $iomix" >> "$logprefix.log"
+
+    access=$(stat --format="%X" "$logprefix.log")
+    age=$(($(date -u +%s)-access))
+  done
+}
+
+# Calculates the min, avg, max, stddev stats from columns of datasets
+calc_stats() {
+  awk '
+  {
+    for (i=1; i<=NF; i++) {
+      if ($i>max[i]) max[i]=$i
+      if (NR==1) min[i]=$i
+      else if ($i<min[i]) min[i]=$i
+      sum[i] += $i
+      sumsq[i] += ($i)^2
+    }
+  }
+  END {
+    for (i=1; i<=NF; i++) {
+      printf "%f %f %f %f\n", min[i], sum[i]/NR, max[i], sqrt((sumsq[i]-(sum[i]^2/NR))/NR);
+    }
+  }' $1
+}
+
+# Parses the many stress-ng readings, outputs for munin and removes the log
+keys=(cpu memrate iomix)
+stats=(min avg max stddev)
+parse_log() {
+  local i=0
+  calc_stats "$logprefix.log" | while read -r ${stats[@]}
+  do
+    for stat in ${stats[@]}
+    do
+      echo "${keys[$i]}_${stat}.value ${!stat}"
+    done
+    ((i++))
+  done
+  rm "$logprefix.log"
+}
+
+# Parses the stress-ng yaml output
+parse_yaml() {
+  while read -r
+  do
+    local line="$REPLY" prefix="$2" s="[[:space:]]+" w="[[:alnum:]_-]+"
+    value=""
+    if   [[ "$line" =~ ^($w): ]]; then section="${BASH_REMATCH[1]//-/_}_"
+    elif [[ "$line" =~ ^$s-($s)stressor:$s($w) ]]; then stressor="${BASH_REMATCH[2]//-/_}_"
+    elif [[ "$line" =~ ^$s($w):$s(.*) ]]; then key="${BASH_REMATCH[1]//-/_}"; value="${BASH_REMATCH[2]}"
+    fi
+    if [ "$value" != "" ]; then echo "$prefix$section$stressor$key='$value'"; value=""; fi
+  done < $1
+}
+
+# Outputs the munin config
+output_config() {
+  echo "graph_title CPU throughput"
+  echo "graph_category vps"
+  echo "graph_vlabel seconds"
+  echo "graph_info This graph monitors the time taken to do a fixed amount of work"
+
+  echo "cpu_max.label maximum"
+  echo "cpu_max.type GAUGE"
+  echo "cpu_max.min 0"
+  echo "cpu_max.draw AREA"
+
+  echo "cpu_avg.label average"
+  echo "cpu_avg.type GAUGE"
+  echo "cpu_avg.min 0"
+  echo "cpu_avg.draw LINE2"
+}
+
+TODO:
+Write actual graph config
+Logic for detecting running pid on config and starting if pidfile or process not exist
+What if logfile doesn't exist
+Switch case for all munin run types: config, suggest, ...
+
+# measurement_process &
+#echo "$!" > "$logprefix.pid"
+#sleep 10
+#calc_stats "$logprefix.log" | while  read -r line; do echo $line; done
+#read -r line <<< $(calc_stats "$logprefix.log")
+#echo $line
+parse_log
