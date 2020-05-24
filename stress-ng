@@ -12,7 +12,7 @@ measurement_process() {
   age="0"
   while [ $age -lt "360" ]
   do
-    stress-ng --cpu 0 --memrate 0 --iomix 0 -t 1s --sequential 0 --metrics --quiet --yaml "$logprefix.yml" >/dev/null 2>&1
+    stress-ng --cpu 0 --memrate 0 --iomix 0 --iomix-bytes 300m -t 1s --sequential 0 --metrics --quiet --yaml "$logprefix.yml" >/dev/null 2>&1
     retval=$?
     eval $(parse_yaml "$logprefix.yml" "STRESS_")
     rm -f "$logprefix.yml"
