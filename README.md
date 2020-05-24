@@ -16,6 +16,7 @@ The idea is:
  - awk
 
 ## How to use
+
 1. Clone the repo
 
 2. Link the `stress-ng` file to your plugins, for example:
@@ -32,3 +33,11 @@ The idea is:
 5. `service munin-node restart`
 
 The plugin uses the /tmp folder to store three files with munin-stress-ng prefix: .yml, .log and .pid
+
+### To stop stress testing
+
+1. Unlink the plugin: `rm /etc/munin/plugins/stress_ng`
+
+2. `service munin-node restart`
+
+Once munin stops reading data the stress-ng task will terminate
