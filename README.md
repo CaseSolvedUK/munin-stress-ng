@@ -30,7 +30,11 @@ The idea is:
     [stress_ng]
     user root
 
-5. `service munin-node restart`
+4. `service munin-node restart`
+
+5. Due to the way munin checks for plugin timeouts (fork_service) you also need to run the following after the plugin has timed out (default: 60s) to get the stress test thread started again:
+
+`munin-run stress_ng config`
 
 The plugin uses the /tmp folder to store three files with munin-stress-ng prefix: .yml, .log and .pid
 
@@ -40,4 +44,8 @@ The plugin uses the /tmp folder to store three files with munin-stress-ng prefix
 
 2. `service munin-node restart`
 
-Once munin stops reading data the stress-ng task will terminate
+Once munin stops reading data, the stress-ng task will terminate
+
+OR you could just kill the stress-ng process with:
+
+`kill $(<"/tmp/munin-stress-ng.pid")`
