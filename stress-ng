@@ -111,10 +111,15 @@ output_config() {
   do
     if [ $key = "retval" ]; then
       printf "\nmultigraph stress_ng_${key}\n"
-      echo "graph_title return value"
+      echo "graph_title exit code"
       echo "graph_category stress-ng"
-      echo "graph_vlabel number"
-      echo "graph_info The return value number, non-zero values are errors"
+      echo "graph_vlabel code number"
+      echo "graph_info The stress-ng exit code, non-zero values are errors"
+
+      echo "${key}_max.label maximum"
+      echo "${key}_max.type GAUGE"
+      echo "${key}_max.min 0"
+      echo "${key}_max.draw AREA"
 
       echo "${key}_min.label minimum"
       echo "${key}_min.type GAUGE"
@@ -125,11 +130,6 @@ output_config() {
       echo "${key}_avg.type GAUGE"
       echo "${key}_avg.min 0"
       echo "${key}_avg.draw LINE2"
-
-      echo "${key}_max.label maximum"
-      echo "${key}_max.type GAUGE"
-      echo "${key}_max.min 0"
-      echo "${key}_max.draw AREA"
     else
       printf "\nmultigraph stress_ng_${key}\n"
       echo "graph_title ${key} throughput"
@@ -137,6 +137,11 @@ output_config() {
       echo "graph_vlabel bogo-ops/s (realtime)"
       echo "graph_info The number of ${key} operations available per second"
 
+      echo "${key}_max.label maximum"
+      echo "${key}_max.type GAUGE"
+      echo "${key}_max.min 0"
+      echo "${key}_max.draw AREA"
+
       echo "${key}_min.label minimum"
       echo "${key}_min.type GAUGE"
       echo "${key}_min.min 0"
@@ -146,11 +151,6 @@ output_config() {
       echo "${key}_avg.type GAUGE"
       echo "${key}_avg.min 0"
       echo "${key}_avg.draw LINE2"
-
-      echo "${key}_max.label maximum"
-      echo "${key}_max.type GAUGE"
-      echo "${key}_max.min 0"
-      echo "${key}_max.draw AREA"
 
       echo "${key}_stddev.label std. deviation"
       echo "${key}_stddev.type GAUGE"
