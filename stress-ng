@@ -18,21 +18,18 @@ get_info() {
     if [[ -z $MHZ   && "$REPLY" =~ cpu\ MHz.+:\ (.*)$ ]]; then MHZ=${BASH_REMATCH[1]}; fi
   done < "/proc/cpuinfo"
   # Remove unnecessary strings
-  model=${model//Processor}
+  model=${model// Processor}
   model=${model// CPU}
   model=${model// Core}
   model=${model//(R)}
   model=${model//(TM)}
   info[cpu]=$(printf "%s (%.0f MHz)" "$model" "$MHZ")
 
-  # Get root disk
-  if [[ $(lsblk -Jp -o mountpoint,name) =~ \"mountpoint\":\ \"/\",\ \"name\":\ \"([[:alpha:]/]+) ]]; then disk=${BASH_REMATCH[1]}; fi
-
   # Get controller & disk info
   while read -r
   do
     if [[ -z $controller && "$REPLY" =~ storage\ +(.*)$ ]]; then controller=${BASH_REMATCH[1]}; fi
-    if [[ -z $name       && "$REPLY" =~ $disk\ +disk\ +(.*)$ ]]; then name=${BASH_REMATCH[1]}; fi
+    if [[ -z $disk && -z $name && "$REPLY" =~ (.*)\ +disk\ +(.*)$ ]]; then disk=${BASH_REMATCH[1]} name=${BASH_REMATCH[2]}; fi
   done <<< $(lshw -short -class storage -class disk 2>/dev/null)
   name=${name// HARDDISK}
   controller=${controller// Controller}
