@@ -9,10 +9,13 @@
 # The plugin deletes the file when munin-node runs and takes the measurements
 logprefix="/tmp/munin-stress-ng"
 measurement_process() {
+  trap "exit 0" INT QUIT KILL TERM
+  trap cleanup EXIT
+
   age="0"
   while [ $age -lt "360" ]
   do
-    stress-ng --cpu 0 --memrate 0 --iomix 0 --iomix-bytes 300m -t 1s --sequential 0 --metrics --quiet --yaml "$logprefix.yml" >/dev/null 2>&1
+    stress-ng --yaml "$logprefix.yml" --cpu 0 --memrate 0 --iomix 0 --iomix-bytes 300m -t 1s --sequential 0 --metrics --quiet >/dev/null 2>&1
     retval=$?
     eval $(parse_yaml "$logprefix.yml" "STRESS_")
     rm -f "$logprefix.yml"
@@ -25,8 +28,12 @@ measurement_process() {
     access=$(stat --format="%X" "$logprefix.log")
     age=$(($(date -u +%s)-access))
   done
+}
+
+cleanup() {
   rm -f "$logprefix.pid"
   rm -f "$logprefix.log"
+  rm -f "$logprefix.yml"
 }
 
 # Calculates the min, avg, max, stddev stats from columns of datasets
