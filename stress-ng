@@ -12,9 +12,9 @@ measurement_process() {
   age="0"
   while [ $age -lt "360" ]
   do
-    stress-ng --cpu 0 --memrate 0 --iomix 0 -t 1s --sequential 0 --metrics --quiet --yaml "$logprefix.yml"
+    stress-ng --cpu 0 --memrate 0 --iomix 0 -t 1s --sequential 0 --metrics --quiet --yaml "$logprefix.yml" >/dev/null 2>&1
     eval $(parse_yaml "$logprefix.yml" "STRESS_")
-    rm "$logprefix.yml"
+    rm -f "$logprefix.yml"
 
     cpu=$STRESS_metrics_cpu_bogo_ops_per_second_real_time
     memrate=$STRESS_metrics_memrate_bogo_ops_per_second_real_time
@@ -24,10 +24,19 @@ measurement_process() {
     access=$(stat --format="%X" "$logprefix.log")
     age=$(($(date -u +%s)-access))
   done
+  rm -f "$logprefix.pid"
 }
 
 # Calculates the min, avg, max, stddev stats from columns of datasets
 calc_stats() {
+  # Create dummy reading if log file doesn't exist
+  if [ ! -f "$1" ]; then
+    for key in ${keys[@]}; do
+      printf "0 " >> "$1"
+    done
+    printf "\n" >> "$1"
+  fi
+
   awk '
   {
     for (i=1; i<=NF; i++) {
@@ -42,7 +51,7 @@ calc_stats() {
     for (i=1; i<=NF; i++) {
       printf "%f %f %f %f\n", min[i], sum[i]/NR, max[i], sqrt((sumsq[i]-(sum[i]^2/NR))/NR);
     }
-  }' $1
+  }' "$1"
 }
 
 # Parses the many stress-ng readings, outputs for munin and removes the log
@@ -52,13 +61,15 @@ parse_log() {
   local i=0
   calc_stats "$logprefix.log" | while read -r ${stats[@]}
   do
+    key=${keys[$i]}
+    printf "\nmultigraph stress_ng_${key}\n"
     for stat in ${stats[@]}
     do
-      echo "${keys[$i]}_${stat}.value ${!stat}"
+      echo "${key}_${stat}.value ${!stat}"
     done
     ((i++))
   done
-  rm "$logprefix.log"
+  rm -f "$logprefix.log"
 }
 
 # Parses the stress-ng yaml output
@@ -72,37 +83,62 @@ parse_yaml() {
     elif [[ "$line" =~ ^$s($w):$s(.*) ]]; then key="${BASH_REMATCH[1]//-/_}"; value="${BASH_REMATCH[2]}"
     fi
     if [ "$value" != "" ]; then echo "$prefix$section$stressor$key='$value'"; value=""; fi
-  done < $1
+  done < "$1"
 }
 
-# Outputs the munin config
+# Start stress_ng if not already running
+start_stress_ng() {
+  if [ ! -f "$logprefix.pid" ]; then
+    measurement_process &
+    echo "$!" > "$logprefix.pid"
+  fi
+
+  pid=$(<"$logprefix.pid")
+  ps $pid >/dev/null 2>&1
+  if [ "$?" -eq 1 ]; then
+    measurement_process &
+    echo "$!" > "$logprefix.pid"
+  fi
+}
+
+# Outputs the munin config. GAUGE keeps the original value
 output_config() {
-  echo "graph_title CPU throughput"
-  echo "graph_category vps"
-  echo "graph_vlabel seconds"
-  echo "graph_info This graph monitors the time taken to do a fixed amount of work"
+  for key in ${keys[@]}
+  do
+    printf "\nmultigraph stress_ng_$key\n"
+    echo "graph_title $key throughput"
+    echo "graph_category stress-ng"
+    echo "graph_vlabel bogo-ops/s (realtime)"
+    echo "graph_info The number of $key operations available per second"
 
-  echo "cpu_max.label maximum"
-  echo "cpu_max.type GAUGE"
-  echo "cpu_max.min 0"
-  echo "cpu_max.draw AREA"
+    echo "${key}_min.label minimum"
+    echo "${key}_min.type GAUGE"
+    echo "${key}_min.min 0"
+    echo "${key}_max.draw LINE2"
 
-  echo "cpu_avg.label average"
-  echo "cpu_avg.type GAUGE"
-  echo "cpu_avg.min 0"
-  echo "cpu_avg.draw LINE2"
+    echo "${key}_avg.label average"
+    echo "${key}_avg.type GAUGE"
+    echo "${key}_avg.min 0"
+    echo "${key}_avg.draw LINE2"
+
+    echo "${key}_max.label maximum"
+    echo "${key}_max.type GAUGE"
+    echo "${key}_max.min 0"
+    echo "${key}_max.draw AREA"
+
+    echo "${key}_stddev.label std. deviation"
+    echo "${key}_stddev.type GAUGE"
+    echo "${key}_stddev.min 0"
+    echo "${key}_stddev.draw LINE2"
+  done
+  start_stress_ng
 }
 
-TODO:
-Write actual graph config
-Logic for detecting running pid on config and starting if pidfile or process not exist
-What if logfile doesn't exist
-Switch case for all munin run types: config, suggest, ...
-
-# measurement_process &
-#echo "$!" > "$logprefix.pid"
-#sleep 10
-#calc_stats "$logprefix.log" | while  read -r line; do echo $line; done
-#read -r line <<< $(calc_stats "$logprefix.log")
-#echo $line
-parse_log
+case "$1" in
+  config)
+    output_config;;
+  suggest)
+    echo "ln -s /root/munin-stress-ng/stress-ng /etc/munin/plugins/stress_ng";;
+  *)
+    parse_log;;
+esac
