@@ -13,18 +13,20 @@ measurement_process() {
   while [ $age -lt "360" ]
   do
     stress-ng --cpu 0 --memrate 0 --iomix 0 -t 1s --sequential 0 --metrics --quiet --yaml "$logprefix.yml" >/dev/null 2>&1
+    retval=$?
     eval $(parse_yaml "$logprefix.yml" "STRESS_")
     rm -f "$logprefix.yml"
 
     cpu=$STRESS_metrics_cpu_bogo_ops_per_second_real_time
     memrate=$STRESS_metrics_memrate_bogo_ops_per_second_real_time
     iomix=$STRESS_metrics_iomix_bogo_ops_per_second_real_time
-    echo "$cpu $memrate $iomix" >> "$logprefix.log"
+    echo "$cpu $memrate $iomix $retval" >> "$logprefix.log"
 
     access=$(stat --format="%X" "$logprefix.log")
     age=$(($(date -u +%s)-access))
   done
   rm -f "$logprefix.pid"
+  rm -f "$logprefix.log"
 }
 
 # Calculates the min, avg, max, stddev stats from columns of datasets
@@ -55,7 +57,7 @@ calc_stats() {
 }
 
 # Parses the many stress-ng readings, outputs for munin and removes the log
-keys=(cpu memrate iomix)
+keys=(cpu memrate iomix retval)
 stats=(min avg max stddev)
 parse_log() {
   local i=0
@@ -65,7 +67,9 @@ parse_log() {
     printf "\nmultigraph stress_ng_${key}\n"
     for stat in ${stats[@]}
     do
-      echo "${key}_${stat}.value ${!stat}"
+      if [[ ! ($key = "retval" && $stat = "stddev") ]]; then
+        echo "${key}_${stat}.value ${!stat}"
+      fi
     done
     ((i++))
   done
@@ -105,31 +109,54 @@ start_stress_ng() {
 output_config() {
   for key in ${keys[@]}
   do
-    printf "\nmultigraph stress_ng_$key\n"
-    echo "graph_title $key throughput"
-    echo "graph_category stress-ng"
-    echo "graph_vlabel bogo-ops/s (realtime)"
-    echo "graph_info The number of $key operations available per second"
+    if [ $key = "retval" ]; then
+      printf "\nmultigraph stress_ng_${key}\n"
+      echo "graph_title return value"
+      echo "graph_category stress-ng"
+      echo "graph_vlabel number"
+      echo "graph_info The return value number, non-zero values are errors"
 
-    echo "${key}_min.label minimum"
-    echo "${key}_min.type GAUGE"
-    echo "${key}_min.min 0"
-    echo "${key}_max.draw LINE2"
+      echo "${key}_min.label minimum"
+      echo "${key}_min.type GAUGE"
+      echo "${key}_min.min 0"
+      echo "${key}_min.draw LINE2"
 
-    echo "${key}_avg.label average"
-    echo "${key}_avg.type GAUGE"
-    echo "${key}_avg.min 0"
-    echo "${key}_avg.draw LINE2"
+      echo "${key}_avg.label average"
+      echo "${key}_avg.type GAUGE"
+      echo "${key}_avg.min 0"
+      echo "${key}_avg.draw LINE2"
 
-    echo "${key}_max.label maximum"
-    echo "${key}_max.type GAUGE"
-    echo "${key}_max.min 0"
-    echo "${key}_max.draw AREA"
+      echo "${key}_max.label maximum"
+      echo "${key}_max.type GAUGE"
+      echo "${key}_max.min 0"
+      echo "${key}_max.draw AREA"
+    else
+      printf "\nmultigraph stress_ng_${key}\n"
+      echo "graph_title ${key} throughput"
+      echo "graph_category stress-ng"
+      echo "graph_vlabel bogo-ops/s (realtime)"
+      echo "graph_info The number of ${key} operations available per second"
 
-    echo "${key}_stddev.label std. deviation"
-    echo "${key}_stddev.type GAUGE"
-    echo "${key}_stddev.min 0"
-    echo "${key}_stddev.draw LINE2"
+      echo "${key}_min.label minimum"
+      echo "${key}_min.type GAUGE"
+      echo "${key}_min.min 0"
+      echo "${key}_min.draw LINE2"
+
+      echo "${key}_avg.label average"
+      echo "${key}_avg.type GAUGE"
+      echo "${key}_avg.min 0"
+      echo "${key}_avg.draw LINE2"
+
+      echo "${key}_max.label maximum"
+      echo "${key}_max.type GAUGE"
+      echo "${key}_max.min 0"
+      echo "${key}_max.draw AREA"
+
+      echo "${key}_stddev.label std. deviation"
+      echo "${key}_stddev.type GAUGE"
+      echo "${key}_stddev.min 0"
+      echo "${key}_stddev.draw LINE2"
+    fi
   done
   start_stress_ng
 }
