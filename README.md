@@ -36,6 +36,10 @@ The idea is:
 
 `munin-run stress_ng config`
 
+OR
+
+`./stress-ng start`
+
 The plugin uses the /tmp folder to store three files with munin-stress-ng prefix: .yml, .log and .pid
 
 ### To stop stress testing
@@ -48,4 +52,4 @@ Once munin stops reading data, the stress-ng task will terminate
 
 OR you could just kill the stress-ng process with:
 
-`kill $(<"/tmp/munin-stress-ng.pid")`
+`./stress-ng stop`
