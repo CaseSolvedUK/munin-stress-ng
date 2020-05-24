@@ -8,6 +8,37 @@
 # It does this by monitoring the access (read) time of the log file
 # The plugin deletes the file when munin-node runs and takes the measurements
 logprefix="/tmp/munin-stress-ng"
+
+declare -A info
+get_info() {
+  # Get CPU
+  while read -r
+  do
+    if [[ -z $model && "$REPLY" =~ model\ name.+:\ (.*)$ ]]; then model=${BASH_REMATCH[1]}; fi
+    if [[ -z $MHZ   && "$REPLY" =~ cpu\ MHz.+:\ (.*)$ ]]; then MHZ=${BASH_REMATCH[1]}; fi
+  done < "/proc/cpuinfo"
+  # Remove unnecessary strings
+  model=${model//Processor}
+  model=${model// CPU}
+  model=${model// Core}
+  model=${model//(R)}
+  model=${model//(TM)}
+  info[cpu]=$(printf "%s (%.0f MHz)" "$model" "$MHZ")
+
+  # Get root disk
+  if [[ $(lsblk -Jp -o mountpoint,name) =~ \"mountpoint\":\ \"/\",\ \"name\":\ \"([[:alpha:]/]+) ]]; then disk=${BASH_REMATCH[1]}; fi
+
+  # Get controller & disk info
+  while read -r
+  do
+    if [[ -z $controller && "$REPLY" =~ storage\ +(.*)$ ]]; then controller=${BASH_REMATCH[1]}; fi
+    if [[ -z $name       && "$REPLY" =~ $disk\ +disk\ +(.*)$ ]]; then name=${BASH_REMATCH[1]}; fi
+  done <<< $(lshw -short -class storage -class disk 2>/dev/null)
+  name=${name// HARDDISK}
+  controller=${controller// Controller}
+  info[iomix]=$(printf "%s on %s" "$name" "$controller")
+}
+
 measurement_process() {
   trap "exit 0" INT QUIT KILL TERM
   trap cleanup EXIT
@@ -25,7 +56,7 @@ measurement_process() {
     iomix=$STRESS_metrics_iomix_bogo_ops_per_second_real_time
     echo "$cpu $memrate $iomix $retval" >> "$logprefix.log"
 
-    access=$(stat --format="%X" "$logprefix.log")
+    access=$(stat --format="%X" "$logprefix.log" 2>/dev/null)
     age=$(($(date -u +%s)-access))
   done
 }
@@ -114,6 +145,7 @@ start_stress_ng() {
 
 # Outputs the munin config. GAUGE keeps the original value
 output_config() {
+  get_info
   for key in ${keys[@]}
   do
     if [ $key = "retval" ]; then
@@ -139,7 +171,7 @@ output_config() {
       echo "${key}_avg.draw LINE2"
     else
       printf "\nmultigraph stress_ng_${key}\n"
-      echo "graph_title ${key} throughput"
+      printf "graph_title ${key} throughput%s\n" ${info[${key}]:+" - ${info[${key}]}"}
       echo "graph_category stress-ng"
       echo "graph_vlabel bogo-ops/s (realtime)"
       echo "graph_info The number of ${key} operations available per second"
