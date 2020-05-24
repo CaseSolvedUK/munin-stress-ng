@@ -166,6 +166,10 @@ case "$1" in
     output_config;;
   suggest)
     echo "ln -s /root/munin-stress-ng/stress-ng /etc/munin/plugins/stress_ng";;
+  start)
+    start_stress_ng;;
+  stop)
+    kill $(<"$logprefix.pid");;
   *)
     parse_log;;
 esac
