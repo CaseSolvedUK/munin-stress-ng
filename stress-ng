@@ -125,19 +125,27 @@ parse_yaml() {
   done < "$1"
 }
 
-# Start stress_ng if not already running
-start_stress_ng() {
+# Get status of the stress-ng process
+status_stress_ng() {
   if [ ! -f "$logprefix.pid" ]; then
-    measurement_process &
-    echo "$!" > "$logprefix.pid"
+    echo "Stopped"
+    return 1
   fi
 
   pid=$(<"$logprefix.pid")
   ps $pid >/dev/null 2>&1
   if [ "$?" -eq 1 ]; then
-    measurement_process &
-    echo "$!" > "$logprefix.pid"
+    echo "Quit"
+    return 2
   fi
+
+  echo "Running"
+  return 0
+}
+
+# Start stress_ng if not already running
+start_stress_ng() {
+  status_stress_ng >/dev/null || { measurement_process & echo "$!" > "$logprefix.pid"; }
 }
 
 # Outputs the munin config. GAUGE keeps the original value
@@ -206,6 +214,8 @@ case "$1" in
     start_stress_ng;;
   stop)
     kill $(<"$logprefix.pid");;
+  status)
+    echo "stress-ng $(status_stress_ng)";;
   *)
     parse_log;;
 esac
