@@ -2,11 +2,9 @@
 
 # munin plugin that uses stress-ng to measure cpu, memory and disk throughput
 # configure the plugin with `user root`
+# Start stress testing with `./stress-ng start`, stop with `./stress-ng stop`
+# Get stress process status with `./stress-ng status`
 
-# Spawned as a subshell to create & parse stress-ng measurements
-# If the plugin is not run for 6 minutes, this process will terminate
-# It does this by monitoring the access (read) time of the log file
-# The plugin deletes the file when munin-node runs and takes the measurements
 logprefix="/tmp/munin-stress-ng"
 
 declare -A info
@@ -36,14 +34,18 @@ get_info() {
   info[iomix]=$(printf "%s on %s" "$name" "$controller")
 }
 
+# Spawned as a subshell to create & parse stress-ng measurements
+# If the plugin is not run for 8 minutes, this process will terminate
+# It does this by monitoring the access (read) time of the log file
+# The plugin deletes the file when munin-node runs and takes the measurements
 measurement_process() {
   trap "exit 0" INT QUIT KILL TERM
   trap cleanup EXIT
 
   age="0"
-  while [ $age -lt "360" ]
+  while [ $age -lt "480" ]
   do
-    stress-ng --yaml "$logprefix.yml" --cpu 0 --memrate 0 --iomix 0 --iomix-bytes 300m -t 1s --sequential 0 --metrics --quiet >/dev/null 2>&1
+    stress-ng --yaml "$logprefix.yml" --cpu 0 --memrate 0 --memrate-ops 20 --iomix 0 --iomix-bytes 300m -t 20s --sequential 0 --metrics --quiet >/dev/null 2>&1
     retval=$?
     eval $(parse_yaml "$logprefix.yml" "STRESS_")
     rm -f "$logprefix.yml"
@@ -202,7 +204,6 @@ output_config() {
       echo "${key}_stddev.draw LINE2"
     fi
   done
-  start_stress_ng
 }
 
 case "$1" in
